@@ -1,24 +1,18 @@
 import re, sys, html
-
+from ccgbank_utils import CCGBankUtils as C
 
 TAG_SET = set()
 ARG_STRUCTURE = set()
 
 
 class CCG:
-    ELEM_RE = re.compile(r'<.*?>|[()]|[^\s()]+|\s+')
-
     def __init__(self, text):
         # remove comments
-        text = '\n'.join([l for l in text.split('\n') if l.strip() and not l.strip().startswith('#')])
+        self.text = '\n'.join([l for l in text.split('\n') if l.strip() and not l.strip().startswith('#')])
+        # for t in re.finditer('<[LT] (?P<tag>[^\s>]+) [^>]*>', self.text):
+        #     tag = t.group('tag')
+        #     self.text = self.text.replace(tag, tag.replace('(', '<p>').replace(')','</p>'))
 
-        super().__init__(text)
-
-    def init_elements(self):
-        elem = []
-        for e in self.ELEM_RE.findall(self.text):
-            elem.append(e)
-        return elem
 
     @staticmethod
     def test(text):
@@ -33,16 +27,27 @@ class CCG:
         if not depth == 0: return False
         return True
 
+    @staticmethod
+    def ccg_iter(text):
+        text = re.sub('\n\s*ID=[0-9]+\s*\n', '\n\n', text)
+        Split_RE = re.compile('\n\s*\n')
+        for text in Split_RE.split(text):
+            text = text.strip()
+            if text and CCG.test(text):
+                yield text
+
+    def __str__(self):
+        return C.toCoNLL(self.text)
+
 
 def main():
-    test_file = r'../data/ccg.txt'
+    test_file = r'test-data/ccg.txt'
 
     with open(test_file, 'r', encoding='utf8') as f:
-        for ccg in CCG.finditer(f.read()):
+        for ccg in CCG.ccg_iter(f.read()):
             ccg = CCG(ccg)
-            ccg.html()
-    for w in sorted(ARG_STRUCTURE):
-        print(w)
+            print(ccg)
+            print()
 
 
 if __name__ == "__main__":

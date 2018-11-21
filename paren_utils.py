@@ -1,5 +1,6 @@
 import re
 
+
 def mark_depth(text):
     Paren_RE = re.compile('^(?P<pre>([^()])*)(?P<paren>[()])')
     i = 0
@@ -15,21 +16,34 @@ def mark_depth(text):
     return text
 
 
+def mark_bottom_up(text):
+    Paren_RE = re.compile('[(](?P<inside>[^()]*)[)]')
+    i = 1
+    while Paren_RE.search(text):
+        for p in Paren_RE.finditer(text):
+            s = p.group('inside')
+            text = text.replace(p.group(), f'<{i}>{s}</{i}>', 1)
+        i += 1
+    return text
+
+
 def unmark_depth(deep_text):
-    text = re.sub('<[0-9]+>','(',deep_text)
+    text = re.sub('<[0-9]+>', '(', deep_text)
     text = re.sub('</[0-9]+>', ')', text)
     return text
+
 
 def depth_at(text, i):
     depth = 0
     for j, ch in enumerate(text):
         if ch == ')': depth -= 1
-        if j==i: return depth
+        if j == i: return depth
         if ch == '(': depth += 1
     return -1
 
-def paren_iter(text):
-    deep_text = mark_depth(text)
+
+def paren_iter(text, bottom_up=False):
+    deep_text = mark_bottom_up(text) if bottom_up else mark_depth(text)
     j = 1
     while f'<{j}>' in deep_text:
         Paren_RE = re.compile(f'<{j}>(?P<text>.*?)</{j}>', re.DOTALL)
@@ -38,7 +52,8 @@ def paren_iter(text):
             p = re.sub('<[0-9]+>', '(', p)
             p = re.sub('</[0-9]+>', ')', p)
             yield p
-        j+=1
+        j += 1
+
 
 def test_parens(text):
     depth = 0
@@ -48,6 +63,7 @@ def test_parens(text):
         if depth < 0: return False
     if not depth == 0: return False
     return True
+
 
 def max_depth(text):
     max = 0
