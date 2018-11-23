@@ -1,20 +1,44 @@
+import re
+from ccg_tag import CCG_Tag
+
 
 class CCG_Combinator:
+    # Type Raising
+    TypeRaisingRight_RE = re.compile(r'(?P<T1>\S+)/[(](?P<T2>\S+)\\(?P<X>\S+)[)]')
+    TypeRaisingLeft_RE = re.compile(r'(?P<T1>\S+)\\[(](?P<T2>\S+)/(?P<X>\S+)[)]')
+    # Function Application
+    FunctionApplRight_RE = re.compile(r'(?P<X>\S+)[*]/[*](?P<Y>\S+)')
+    FunctionApplLeft_RE = re.compile(r'(?P<X>\S+)[*]\\[*](?P<Y>\S+)')
+    # Composition
+    Composition_RE = re.compile(r'(?P<X>\S+)[*][\\/][*](?P<Y>\S+)')
 
     @staticmethod
-    def get_combinator_unary(before_tag, after_tag):
-        TR1_RE = re.compile(r'(?P<T1>\S+)/[(](?P<T2>\S+)\\(?P<X>\S+)[)]')
-        TR2_RE = re.compile(r'(?P<T1>\S+)\\[(](?P<T2>\S+)/(?P<X>\S+)[)]')
+    def _mark_first_arg(tag):
+        depth = 0
+        index = -1
+        for i, c in enumerate(tag):
+            if c == '(':
+                depth += 1
+            elif c == ')':
+                depth -= 1
+            elif c in ['\\', '/'] and depth == 0:
+                index = i
+        if index > 0:
+            return tag[:index] + '*' + tag[index] + '*' + tag[index + 1:]
+        return tag
 
-        before_tag = CCGTagUtils.remove_features(before_tag)
-        after_tag = CCGTagUtils.remove_features(after_tag)
+    @staticmethod
+    def get_unary_combinator(before_tag, after_tag):
+
+        before_tag = CCG_Tag.remove_features(before_tag)
+        after_tag = CCG_Tag.remove_features(after_tag)
         # Type Raising
-        tr = TR1_RE.match(after_tag)
+        tr = CCG_Combinator.TypeRaisingRight_RE.match(after_tag)
         if tr and tr.group('T1') == tr.group('T2'):
             X = tr.group('X')
             if X in [before_tag, f'({before_tag})']:
                 return 'TR>'
-        tr = TR2_RE.match(after_tag)
+        tr = CCG_Combinator.TypeRaisingLeft_RE.match(after_tag)
         if tr and tr.group('T1') == tr.group('T2'):
             X = tr.group('X')
             if X in [before_tag, f'({before_tag})']:
@@ -34,23 +58,21 @@ class CCG_Combinator:
         return '?'
 
     @staticmethod
-    def get_combinator_binary(left_tag, right_tag, tag):
-        FA1_RE = re.compile(r'(?P<X>\S+)[*]/[*](?P<Y>\S+)')
-        FA2_RE = re.compile(r'(?P<X>\S+)[*]\\[*](?P<Y>\S+)')
+    def get_binary_combinator(left_tag, right_tag, tag):
 
-        left_tag = CCGTagUtils.remove_features(left_tag)
-        right_tag = CCGTagUtils.remove_features(right_tag)
-        tag = CCGTagUtils.remove_features(tag)
+        left_tag = CCG_Tag.remove_features(left_tag)
+        right_tag = CCG_Tag.remove_features(right_tag)
+        tag = CCG_Tag.remove_features(tag)
 
         # Right Function Application
-        fa = FA1_RE.match(CCGTagUtils.mark_first_arg(left_tag))
-        if fa and CCGTagUtils.clean_parens(fa.group('Y')) == right_tag \
-                and CCGTagUtils.clean_parens(fa.group('X')) in tag:
+        fa = CCG_Combinator.FunctionApplRight_RE.match(CCG_Combinator._mark_first_arg(left_tag))
+        if fa and fa.group('Y') in [right_tag, f'({right_tag})'] \
+                and fa.group('X') in [tag, f'({tag})']:
             return '>'
         # Left Function Application
-        fa = FA2_RE.match(CCGTagUtils.mark_first_arg(right_tag))
-        if fa and CCGTagUtils.clean_parens(fa.group('Y')) == left_tag \
-                and CCGTagUtils.clean_parens(fa.group('X'))  == tag:
+        fa = CCG_Combinator.FunctionApplLeft_RE.match(CCG_Combinator._mark_first_arg(right_tag))
+        if fa and fa.group('Y') in [left_tag, f'({left_tag})'] \
+                and fa.group('X') in [tag, f'({tag})']:
             return '<'
 
         # Other
@@ -61,15 +83,14 @@ class CCG_Combinator:
         if left_tag == 'conj' and tag in [f'{right_tag}\\{right_tag}', f'({right_tag})\\({right_tag})']:
             return 'conj'
         # Composition
-        B_RE = re.compile(r'(?P<X>\S+)[*][\\/][*](?P<Y>\S+)')
 
-        l = B_RE.match(CCGTagUtils.mark_first_arg(left_tag))
-        r = B_RE.match(CCGTagUtils.mark_first_arg(right_tag))
-        t = B_RE.match(CCGTagUtils.mark_first_arg(tag))
+        l = CCG_Combinator.Composition_RE.match(CCG_Combinator._mark_first_arg(left_tag))
+        r = CCG_Combinator.Composition_RE.match(CCG_Combinator._mark_first_arg(right_tag))
+        t = CCG_Combinator.Composition_RE.match(CCG_Combinator._mark_first_arg(tag))
         if l and r and t:
-            lx, ly = CCGTagUtils.clean_parens(l.group('X')), CCGTagUtils.clean_parens(l.group('Y'))
-            rx, ry = CCGTagUtils.clean_parens(r.group('X')), CCGTagUtils.clean_parens(r.group('Y'))
-            tx, ty = CCGTagUtils.clean_parens(t.group('X')), CCGTagUtils.clean_parens(t.group('Y'))
+            lx, ly = l.group('X'), l.group('Y')
+            rx, ry = r.group('X'), r.group('Y')
+            tx, ty = t.group('X'), t.group('Y')
             if ly == rx and lx == tx and ry == ty:
                 return 'B>'
             elif lx == ry and rx == tx and ly == ty:
@@ -80,3 +101,4 @@ class CCG_Combinator:
             return 'B>$'
         print('B?', left_tag, '+', right_tag, '=>', tag)
         return '?'
+

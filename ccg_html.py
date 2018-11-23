@@ -1,106 +1,34 @@
 
+from ccgbank_format import CCGBank_Format as CB
+from ccg import CCG
+import re
 
 class CCG_HTML:
 
-    def elements_html(self):
+    @staticmethod
+    def tohtml(ccg):
         WORDS = []
+        for j,w in enumerate(CB.words(ccg)):
+            WORDS.append(f'<td><span class="word" tok-id="{j}"><span class="tok">{j}/</span>{w.word()}</span></td>')
         TAGS = []
-        PHRASES = []
-        CCG = self.elements().copy()
-
-        for i, e in enumerate(CCG):
-            if e == '(':
-                CCG[i] = '<*>'
-            elif e == ')':
-                CCG[i] = '</*>'
-
-        CCG = ''.join(CCG)
-
-        # find words
-        j = 0
-        for word in CCGBankUtils.word_iter(CCG):
-            w = word.group('word')
-            tag = word.group('tag')
-            tag = CCGTagUtils.clean_parens(tag)
-            pos = word.group('pos')
-            CCG = CCG.replace(word.group(), f'{j}={tag}', 1)
-            tag = CCGTagUtils.to_html(tag)
-            t = re.sub(r'<sub>.*?</sub>','',tag)
-            t2 = re.sub(r'<args>.*?</args>', '', tag)
-            t2 = t2.replace(r'<sub>', '[').replace('</sub>',']')
-            if t.count('NP') >= 2:
-                ARG_STRUCTURE.add(t2+' : '+w+' '+pos)
-
-            WORDS.append(f'<td><word class="aligned" tok-id="{j}"><tok>{j}/</tok>{w}</word> </td>')
-            TAGS.append(f'<td class="constit" colspan="1"><tag class="aligned" tok-id="{j}">{tag}</tag> </td>')
-            j += 1
-
-        # mark depth from inside out
-        Parens_RE = re.compile('<\*>(?P<text>[^*]*)</\*>')
-        i = 1
-        while '<*>' in CCG:
-            for p in Parens_RE.finditer(CCG):
-                text = p.group('text')
-                CCG = CCG.replace(p.group(), f'<{i}>{text}</{i}>', 1)
-            i += 1
-        max = i
-
-        # Find Constituents from inside out
-        j = 1
-        while j <= max:
-            PHRASES.append([])
-            id_marker = lambda x, y: f'(?P<{x}>[0-9]+(:[0-9]+)?)=(?P<{y}>\S*?)'
-            tag_pattern = CCGBankUtils.phrase_re().pattern
-            Word_RE = re.compile(f'<{j}>{id_marker("a","tag")}</{j}>')
-            Unary_RE = re.compile(f'<{j}>{tag_pattern} {id_marker("a","tag1")} ?</{j}>')
-            Binary_RE = re.compile(f'<{j}>{tag_pattern} {id_marker("a","tag1")} {id_marker("b","tag2")} ?</{j}>')
-
-            while re.search(f'<{j}>', CCG):
-                regex = re.search(f'<{j}>.*?</{j}>', CCG).group()
-                if Word_RE.match(regex):
-                    a = Word_RE.match(regex).group('a')
-                    tag = Word_RE.match(regex).group('tag')
-                    CCG = Word_RE.sub(a + '=' + tag, CCG, 1)
-                elif Unary_RE.match(regex):
-                    tag = Unary_RE.match(regex).group('tag')
-                    tag = CCGTagUtils.clean_parens(tag)
-                    a = Unary_RE.match(regex).group('a')
-                    CCG = Unary_RE.sub(a + '=' + tag, CCG, 1)
-                    if ':' in a:
-                        start, end = int(a.split(':')[0]), int(a.split(':')[1])
-                        size = end - start
-                    else:
-                        start, end = int(a), int(a) + 1
-                        size = 1
-                    prev_tag = Unary_RE.match(regex).group('tag1')
-                    combin = CCGTagUtils.get_combinator_unary(prev_tag, tag)
-                    tag = CCGTagUtils.to_html(tag)
-                    c = f'<td class="constit ccg-parse" colspan="{size}" span="{start}:{end}">{tag}<span class="combinator">{combin}</span></td>'
-                    PHRASES[j - 1].append(c)
-                elif Binary_RE.match(regex):
-                    x = Binary_RE.match(regex)
-                    tag = x.group('tag')
-                    tag = CCGTagUtils.clean_parens(tag)
-                    a = x.group('a')
-                    b = x.group('b')
-                    if ':' in a:
-                        a = a.split(':')[0]
-                    if ':' in b:
-                        b = b.split(':')[1]
-                    else:
-                        b = str(int(b) + 1)
-                    CCG = Binary_RE.sub(a + ':' + b + '=' + tag, CCG, 1)
-                    size = int(b) - int(a)
-                    tag1 = Binary_RE.match(regex).group('tag1')
-                    tag2 = Binary_RE.match(regex).group('tag2')
-                    combin = CCGTagUtils.get_combinator_binary(tag1, tag2, tag)
-                    tag = CCGTagUtils.to_html(tag)
-                    c = f'<td class="constit ccg-parse" colspan="{size}" span="{a}:{b}">{tag}<span class="combinator">{combin}</span></td>'
-                    PHRASES[j - 1].append(c)
-
-                else:
-                    raise Exception('Parsing CCG error:', j, regex)
-            j += 1
+        for j,w in enumerate(CB.words(ccg)):
+            tag = w.tag()
+            TAGS.append(f'<td class="ccg-phrase" colspan="1"><span class="ccg-tag" tok-id="{j}">{tag}</span></td>')
+        PHRASES = [[]]
+        taken = set()
+        for p,i in zip(CB.phrases(ccg),CB.phrase_indices(ccg)):
+            start, end = int(i.split('-')[0]), int(i.split('-')[1])
+            tag = p.tag()
+            combinator = p.combinator().replace('>','&gt;').replace('<','&lt;')
+            for n in range(start, end + 1):
+                if n in taken:
+                    PHRASES.append([])
+                    taken = set()
+            l = f'<td class="ccg-phrase" colspan="{end-start+1}" span="{start}:{end}">{tag}<span class="ccg-combinator">{combinator}</span></td>'
+            PHRASES[-1].append(l)
+            for n in range(start,end+1):
+                taken.add(n)
+        # add empty columns
         Span_RE = re.compile('span="(?P<a>[0-9]+):(?P<b>[0-9]+)"')
         for i, row in enumerate(PHRASES):
             span_end = 0
@@ -109,20 +37,20 @@ class CCG_HTML:
                 a = int(x.group('a'))
                 b = int(x.group('b'))
                 if a > span_end:
-                    PHRASES[i][j] = f'<td colspan="{a-span_end}" span="{span_end}:{a}"/>' + PHRASES[i][j]
+                    PHRASES[i][j] = f'<td class="ccg-empty" colspan="{a-span_end}" span="{span_end}:{a}"/>' + PHRASES[i][j]
                 span_end = b
-        ccg_parse = ['<tr class="expand">' + ''.join(c) + '</tr>\n' for c in PHRASES]
-        ccg_parse.reverse()
+
         html_elems = []
-        html_elems += ['<button class="expand">CCG parse ▲</button><br/>']
-        html_elems += ['<div class="scroll">']
-        html_elems += ['<table class="visccg wordsbelow"><tbody>\n']
+        html_elems += ['<div class="ccg-container">']
+        html_elems += ['<table class="visccg wordsbelow"><tbody>']
+        ccg_parse = ['<tr class="ccg-phrases">' + ''.join(p) + '</tr>' for p in PHRASES]
+        ccg_parse.reverse()
         html_elems += ccg_parse
-        html_elems += ['<tr>\n'] + TAGS + ['</tr>\n']
-        html_elems += ['<tr>\n'] + WORDS + ['</tr>\n']
+        html_elems += ['<tr class="ccg-tags">'] + TAGS + ['</tr>']
+        html_elems += ['<tr class="ccg-words">'] + WORDS + ['</tr>']
         html_elems += ['</tbody></table>']
         html_elems += ['</div>']
-        return html_elems
+        return '\n'.join(html_elems)
 
     # Example of ccg in html:
     #
@@ -159,3 +87,15 @@ class CCG_HTML:
     # </tbody>
     # </table>
 
+
+def main():
+    ccg = r'''
+(<T S[dcl] 1 2> (<T S/S 0 2> (<T S/S 0 2> (<L (S/S)/NP IN IN In (S/S)/NP>) (<T NP 0 2> (<L NP/N DT DT the NP/N>) (<L N NN NN story N>) ) ) (<L , , , , ,>) ) (<T S[dcl] 1 2> (<T NP 0 1> (<T N 1 2> (<L N/N NN NN evildoer N/N>) (<T N 1 2> (<L N/N NNP NNP Cruella N/N>) (<T N 1 2> (<L N/N IN IN de N/N>) (<L N NNP NNP Vil N>) ) ) ) ) (<T S[dcl]\NP 0 2> (<L (S[dcl]\NP)/NP VBZ VBZ makes (S[dcl]\NP)/NP>) (<T NP 0 2> (<L NP/N DT DT no NP/N>) (<T N 0 2> (<L N/(S[to]\NP) NN NN attempt N/(S[to]\NP)>) (<T S[to]\NP 0 2> (<T S[to]\NP 0 2> (<L (S[to]\NP)/(S[b]\NP) TO TO to (S[to]\NP)/(S[b]\NP)>) (<T S[b]\NP 0 2> (<L (S[b]\NP)/NP VB VB conceal (S[b]\NP)/NP>) (<T NP 0 2> (<L NP/(N/PP) PRP$ PRP$ her NP/(N/PP)>) (<T N/PP 0 2> (<L N/PP NN NN glee N/PP>) (<T (N/PP)\(N/PP) 1 2> (<L conj CC CC and conj>) (<T N/PP 0 2> (<L (N/PP)/PP NN NN lack (N/PP)/PP>) (<T PP 0 2> (<L PP/NP IN IN of PP/NP>) (<T NP 0 1> (<L N NN NN conscience N>) ) ) ) ) ) ) ) ) (<L . . . . .>) ) ) ) ) ) ) 
+    '''
+
+    button = '<button class="expand">CCG parse ▲</button><br/>'
+    print(CCG_HTML.tohtml(ccg))
+
+
+if __name__ == "__main__":
+    main()

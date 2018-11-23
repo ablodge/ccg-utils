@@ -1,5 +1,7 @@
 import re, sys, html
-from ccgbank_utils import CCGBankUtils as C
+from ccgbank_format import CCGBank_Format as CB
+import paren_utils
+from ccg_tag import CCG_Tag
 
 TAG_SET = set()
 ARG_STRUCTURE = set()
@@ -37,7 +39,26 @@ class CCG:
                 yield text
 
     def __str__(self):
-        return C.toCoNLL(self.text)
+        ccg = self.text
+        for p in CB.Phrase_RE.finditer(ccg):
+            tag = p.group('tag').replace('(','<p>').replace(')','</p>')
+            ccg = ccg.replace(p.group(), tag)
+        for w in CB.Word_RE.finditer(ccg):
+            tag = w.group('tag').replace('(','<p>').replace(')','</p>')
+            word = w.group('word')
+            ccg = ccg.replace(w.group(), tag+' '+word)
+        max = paren_utils.max_depth(ccg)
+        ccg = paren_utils.mark_depth(ccg)
+        j=1
+        while j <= max:
+            tabs = ''.join('    ' for i in range(j-1))
+            ccg = ccg.replace(f'<{j}>', '\n'+tabs+'{')
+            j += 1
+        ccg = paren_utils.unmark_depth(ccg)
+        ccg = ccg.replace(')','}')
+        ccg = ccg.replace('<p>', '(').replace('</p>', ')')
+
+        return ccg
 
 
 def main():
@@ -47,7 +68,7 @@ def main():
         for ccg in CCG.ccg_iter(f.read()):
             ccg = CCG(ccg)
             print(ccg)
-            print()
+
 
 
 if __name__ == "__main__":
