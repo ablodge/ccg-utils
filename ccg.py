@@ -1,5 +1,5 @@
 import re, sys, html
-from ccgbank_format import CCGBank_Format as CB
+from ccg_format import CCGBank, Readible
 import paren_utils
 from ccg_tag import CCG_Tag
 
@@ -17,19 +17,6 @@ class CCG:
 
 
     @staticmethod
-    def test(text):
-        # ignore comments
-        text = '\n'.join([l for l in text.split('\n') if not l.strip().startswith('#')])
-        if not text.strip().startswith('('): return False
-        depth = 0
-        for ch in text:
-            if ch == '(': depth += 1
-            if ch == ')': depth -= 1
-            if depth < 0: return False
-        if not depth == 0: return False
-        return True
-
-    @staticmethod
     def ccg_iter(text):
         text = re.sub('\n\s*ID=[0-9]+\s*\n', '\n\n', text)
         Split_RE = re.compile('\n\s*\n')
@@ -39,27 +26,39 @@ class CCG:
                 yield text
 
     def __str__(self):
-        ccg = self.text
-        for p in CB.Phrase_RE.finditer(ccg):
-            tag = p.group('tag').replace('(','<p>').replace(')','</p>')
-            ccg = ccg.replace(p.group(), tag)
-        for w in CB.Word_RE.finditer(ccg):
-            tag = w.group('tag').replace('(','<p>').replace(')','</p>')
-            word = w.group('word')
-            ccg = ccg.replace(w.group(), tag+' '+word)
-        max = paren_utils.max_depth(ccg)
-        ccg = paren_utils.mark_depth(ccg)
-        j=1
-        while j <= max:
-            tabs = ''.join('    ' for i in range(j-1))
-            ccg = ccg.replace(f'<{j}>', '\n'+tabs+'{')
-            j += 1
-        ccg = paren_utils.unmark_depth(ccg)
-        ccg = ccg.replace(')','}')
-        ccg = ccg.replace('<p>', '(').replace('</p>', ')')
+        if CCGBank.test(self.text):
+            ccg = self.text
+            for p in CCGBank.Phrase_RE.finditer(ccg):
+                tag = paren_utils.escape_parens(p.group('tag'))
+                ccg = ccg.replace(p.group(), tag)
+            for w in CCGBank.Word_RE.finditer(ccg):
+                tag = paren_utils.escape_parens(w.group('tag'))
+                word = w.group('word')
+                ccg = ccg.replace(w.group(), tag+' '+word)
+            max = paren_utils.max_depth(ccg)
+            ccg = paren_utils.mark_depth(ccg)
+            j=1
+            while j <= max:
+                tabs = ''.join('    ' for i in range(j-1))
+                ccg = ccg.replace(f'<{j}>', '\n'+tabs+'{')
+                j += 1
 
-        return ccg
+            ccg = paren_utils.unmark_depth(ccg)
+            ccg = re.sub(r'(?<!\\)[)]','}', ccg)
+            ccg = paren_utils.unescape_parens(ccg)
+            return ccg
+        else:
+            return self.text
 
+
+
+    @staticmethod
+    def test(ccg):
+        Formats = [CCGBank, Readible]
+        for F in Formats:
+            if F.test(ccg):
+                return True
+        return False
 
 def main():
     test_file = r'test-data/ccg.txt'

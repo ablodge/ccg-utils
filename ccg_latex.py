@@ -1,5 +1,5 @@
 
-from ccgbank_format import CCGBank_Format as CB
+from ccg_format import CCGBank as CB
 from ccg import CCG
 import re
 
@@ -11,40 +11,50 @@ class CCG_HTML:
         WORDS = ' & '.join(w.word() for w in words)+r'\\'
         LINE1 = ' & '.join('\ccgline{1}{}' for w in words)+r'\\'
         TAGS = ' & '.join(w.tag().replace('\\', r' \backslash ') for w in words)+r'\\'
+        LEX = ' & '.join(fr'\sem{{{1}}}{{{w.semantics()}}}' for w in words)+r'\\'
         PHRASES = [[]]
         LINES = [[]]
+        SEM = [[]]
         j = 0
         for p,i in zip(CB.phrases(ccg), CB.phrase_indices(ccg)):
             start, end = int(i.split('-')[0])-1, int(i.split('-')[1])-1
             size = end-start+1
             tag = p.tag().replace('\\', r'\backslash ')
             combinator = p.combinator()
+            semantics = p.semantics()
             if start <= j:
                 while j < len(words):
                     PHRASES[-1].append('')
                     LINES[-1].append('')
+                    SEM[-1].append('')
                     j += 1
                 PHRASES.append([])
                 LINES.append([])
+                SEM.append([])
                 j = 0
             while start > j:
                 PHRASES[-1].append('')
                 LINES[-1].append('')
+                SEM[-1].append('')
                 j += 1
             PHRASES[-1].append(fr'\phrase{{{size}}}{{{tag}}}')
             LINES[-1].append(fr'\ccgline{{{size}}}{{{combinator}}}')
+            SEM[-1].append(fr'\sem{{{size}}}{{{semantics}}}')
             j += size
         PHRASES = [' & '.join(p) for p in PHRASES]
         LINES = [' & '.join(l) for l in LINES]
+        SEM = [' & '.join(s) for s in SEM]
         cols = ' '.join('c' for i in words)
         latex_elems = [r'\resizebox{\columnwidth}{!}{']
         latex_elems += [r'\begin{tabular}{ '+cols+' }']
         latex_elems += [WORDS]
         latex_elems += [LINE1]
         latex_elems += [TAGS]
-        for phrases, lines in zip(PHRASES, LINES):
+        latex_elems += [LEX]
+        for phrases, lines, semantics in zip(PHRASES, LINES, SEM):
             latex_elems += [lines + r'\\']
             latex_elems += [phrases+r'\\']
+            latex_elems += [semantics + r'\\']
         latex_elems += [r'\end{tabular}']
         latex_elems += ['}']
         return '\n'.join(latex_elems)
