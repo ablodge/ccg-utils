@@ -1,11 +1,9 @@
 import re
 
-Paren_TopDown_RE = re.compile('^(?P<pre>([^()])*)(?P<inside>[()])')
-Paren_BottomUp_RE = re.compile('[(](?P<inside>[^()]*)[)]')
 
-
-def mark_depth(text, bottom_up=False):
-    text = _ignore_escaped_parens(text)
+def mark_depth(text, bottom_up=False, lparen='(',rparen=')'):
+    Paren_TopDown_RE = re.compile(f'^(?P<pre>([^{lparen}{rparen}])*)(?P<p>[{lparen}{rparen}])')
+    Paren_BottomUp_RE = re.compile(f'[{lparen}](?P<inside>[^{lparen}{rparen}]*)[{rparen}]')
     if bottom_up:
         i = 1
         while Paren_BottomUp_RE.search(text):
@@ -18,78 +16,60 @@ def mark_depth(text, bottom_up=False):
         while Paren_TopDown_RE.match(text):
             x = Paren_TopDown_RE.match(text)
             s = x.group('pre')
-            p = x.group('inside')
-            if p == '(':
+            p = x.group('p')
+            if p == lparen:
                 i += 1
                 text = Paren_TopDown_RE.sub(s + f'<{i}>', text, 1)
             else:
                 text = Paren_TopDown_RE.sub(s + f'</{i}>', text, 1)
                 i -= 1
-    text = _fix_escaped_parens(text)
     return text
 
 
-def unmark_depth(deep_text):
-    text = re.sub('<[0-9]+>', '(', deep_text)
-    text = re.sub('</[0-9]+>', ')', text)
+def unmark_depth(deep_text, lparen='(',rparen=')'):
+    text = re.sub('<[0-9]+>', lparen, deep_text)
+    text = re.sub('</[0-9]+>', rparen, text)
     return text
 
 
-def depth_at(text, i):
-    text = _ignore_escaped_parens(text)
+def depth_at(text, i, lparen='(',rparen=')'):
     depth = 0
     for j, ch in enumerate(text):
-        if ch == ')': depth -= 1
+        if ch == rparen: depth -= 1
         if j == i: return depth
-        if ch == '(': depth += 1
+        if ch == lparen: depth += 1
     return -1
 
 
-def paren_iter(text, bottom_up=False):
-    deep_text = mark_depth(text, bottom_up)
+def paren_iter(text, bottom_up=False, lparen='(',rparen=')'):
+    deep_text = mark_depth(text, bottom_up=bottom_up, lparen=lparen,rparen=rparen)
     j = 1
     while f'<{j}>' in deep_text:
         Paren_RE = re.compile(f'<{j}>(?P<text>.*?)</{j}>', re.DOTALL)
         for p in Paren_RE.finditer(deep_text):
             p = p.group('text')
-            p = re.sub('<[0-9]+>', '(', p)
-            p = re.sub('</[0-9]+>', ')', p)
+            p = re.sub('<[0-9]+>', lparen, p)
+            p = re.sub('</[0-9]+>', rparen, p)
             yield p
         j += 1
 
 
-def test_parens(text):
-    text = _ignore_escaped_parens(text)
+def test_parens(text, lparen='(',rparen=')'):
     depth = 0
     for ch in text:
-        if ch == '(': depth += 1
-        if ch == ')': depth -= 1
+        if ch == lparen: depth += 1
+        if ch == rparen: depth -= 1
         if depth < 0: return False
     if not depth == 0: return False
     return True
 
 
-def max_depth(text):
-    text = _ignore_escaped_parens(text)
+def max_depth(text, lparen='(',rparen=')'):
     max = 0
     depth = 0
     for ch in text:
-        if ch == '(': depth += 1
+        if ch == lparen: depth += 1
         if max < depth: max = depth
-        if ch == ')': depth -= 1
+        if ch == rparen: depth -= 1
     return max
 
-
-def escape_parens(text):
-    return text.replace('(',r'\(').replace(')',r'\)')
-
-
-def unescape_parens(text):
-    return text.replace(r'\(','(').replace(r'\)',')')
-
-
-def _ignore_escaped_parens(text):
-    return text.replace(r'\(','*L_PAREN*').replace(r'\)','*R_PAREN*')
-
-def _fix_escaped_parens(text):
-    return text.replace('*L_PAREN*',r'\(').replace('*R_PAREN*',r'\)')

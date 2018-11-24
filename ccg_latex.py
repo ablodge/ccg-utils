@@ -1,28 +1,36 @@
 
-from ccg_format import CCGBank as CB
 from ccg import CCG
-import re
+import re, sys
 
-class CCG_HTML:
+class CCG_Latex:
 
     @staticmethod
     def latex(ccg):
-        words = [w for w in CB.words(ccg)]
+        words = [w for w in ccg.words()]
         WORDS = ' & '.join(w.word() for w in words)+r'\\'
         LINE1 = ' & '.join('\ccgline{1}{}' for w in words)+r'\\'
-        TAGS = ' & '.join(w.tag().replace('\\', r' \backslash ') for w in words)+r'\\'
+        TAGS = []
+        for w in words:
+            tag = w.tag()
+            tag = tag.replace('\\', r' \backslash ')
+            tag = tag.replace('[','$_{').replace(']','}$')
+            TAGS.append(tag)
+        TAGS = ' & '.join(TAGS)+r'\\'
         LEX = ' & '.join(fr'\sem{{{1}}}{{{w.semantics()}}}' for w in words)+r'\\'
         PHRASES = [[]]
         LINES = [[]]
         SEM = [[]]
         j = 0
-        for p,i in zip(CB.phrases(ccg), CB.phrase_indices(ccg)):
-            start, end = int(i.split('-')[0])-1, int(i.split('-')[1])-1
+        for p,i in ccg.phrases_and_indices():
+            start, end = int(i.split('-')[0]), int(i.split('-')[1])
             size = end-start+1
-            tag = p.tag().replace('\\', r'\backslash ')
-            combinator = p.combinator()
+            tag = p.tag()
+            tag = tag.replace('\\', r' \backslash ')
+            tag = tag.replace('[', '$_{').replace(']', '}$')
+            combinator = p.combinator().replace('$',r'\$')
             semantics = p.semantics()
-            if start <= j:
+            semantics = re.sub(u'\u03BB',r'\lambda ', semantics, flags=re.UNICODE)
+            if start < j:
                 while j < len(words):
                     PHRASES[-1].append('')
                     LINES[-1].append('')
@@ -72,13 +80,15 @@ class CCG_HTML:
 # \end{tabular}
 
 def main():
-    ccg = r'''
-(<T S[dcl] 1 2> (<T S/S 0 2> (<T S/S 0 2> (<L (S/S)/NP IN IN In (S/S)/NP>) (<T NP 0 2> (<L NP/N DT DT the NP/N>) (<L N NN NN story N>) ) ) (<L , , , , ,>) ) (<T S[dcl] 1 2> (<T NP 0 1> (<T N 1 2> (<L N/N NN NN evildoer N/N>) (<T N 1 2> (<L N/N NNP NNP Cruella N/N>) (<T N 1 2> (<L N/N IN IN de N/N>) (<L N NNP NNP Vil N>) ) ) ) ) (<T S[dcl]\NP 0 2> (<L (S[dcl]\NP)/NP VBZ VBZ makes (S[dcl]\NP)/NP>) (<T NP 0 2> (<L NP/N DT DT no NP/N>) (<T N 0 2> (<L N/(S[to]\NP) NN NN attempt N/(S[to]\NP)>) (<T S[to]\NP 0 2> (<T S[to]\NP 0 2> (<L (S[to]\NP)/(S[b]\NP) TO TO to (S[to]\NP)/(S[b]\NP)>) (<T S[b]\NP 0 2> (<L (S[b]\NP)/NP VB VB conceal (S[b]\NP)/NP>) (<T NP 0 2> (<L NP/(N/PP) PRP$ PRP$ her NP/(N/PP)>) (<T N/PP 0 2> (<L N/PP NN NN glee N/PP>) (<T (N/PP)\(N/PP) 1 2> (<L conj CC CC and conj>) (<T N/PP 0 2> (<L (N/PP)/PP NN NN lack (N/PP)/PP>) (<T PP 0 2> (<L PP/NP IN IN of PP/NP>) (<T NP 0 1> (<L N NN NN conscience N>) ) ) ) ) ) ) ) ) (<L . . . . .>) ) ) ) ) ) ) 
-    '''
+    input_file = r'test-data/EXAMPLE.txt'
+    if len(sys.argv) > 1:
+        input_file = sys.argv[1]
 
-    button = '<button class="expand">CCG parse ▲</button><br/>'
-    print(CCG_HTML.latex(ccg))
-
+    with open(input_file, 'r', encoding='utf8') as f:
+        for ccg in CCG.ccg_iter(f.read()):
+            ccg = CCG(ccg)
+            print(CCG_Latex.latex(ccg))
+            print()
 
 if __name__ == "__main__":
     main()

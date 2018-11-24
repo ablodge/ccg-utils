@@ -16,7 +16,7 @@ class CCGBank:
             self._match = CCGBank.Phrase_RE.match(self.phrase)
 
         def tag(self):
-            return paren_utils.unescape_parens(self._match.group('tag'))
+            return self._match.group('tag')
 
         def children(self):
             num_children = int(self._match.group('children'))
@@ -57,10 +57,10 @@ class CCGBank:
             self._match = CCGBank.Word_RE.match(self.text)
 
         def word(self):
-            return self._match.group('word')
+            return self._match.group('word').replace('-LBR-','{').replace('-RBR-','}')
 
         def tag(self):
-            return  paren_utils.unescape_parens(self._match.group('tag'))
+            return self._match.group('tag')
 
         def pos(self):
             return self._match.group('pos')
@@ -74,15 +74,17 @@ class CCGBank:
             yield CCGBank.Word(w.group())
 
     @staticmethod
-    def word_indices(ccg):
-        for i in range(len(CCGBank.Word_RE.findall(ccg))):
-            yield i+1
+    def words_and_indices(ccg):
+        for i,w in enumerate(CCGBank.words(ccg)):
+            yield w,i
 
     @staticmethod
     def phrases(ccg):
+        ccg = ccg.replace('{', '-LBR-').replace('}', '-RBR-')
+        ccg = ccg.replace('(', '{').replace(')', '}')
         for t in re.finditer('<[LT] (?P<tag>[^\s>]+) .*?>', ccg):
             tag = t.group('tag')
-            ccg = ccg.replace(f' {tag} ', ' '+paren_utils.escape_parens(tag)+' ')
+            ccg = ccg.replace(f' {tag} ', ' '+tag.replace('{','(').replace('}',')')+' ')
         for s in paren_utils.paren_iter(ccg, bottom_up=True):
             p = CCGBank.Phrase_RE.match(s)
             if not p: continue
@@ -90,13 +92,14 @@ class CCGBank:
 
 
     @staticmethod
-    def phrase_indices(ccg):
+    def phrases_and_indices(ccg):
+        phrases = CCGBank.phrases(ccg)
         ID_RE = re.compile('[*](?P<n>[0-9]+)[*]')
         for i in CCGBank.word_indices(ccg):
             ccg = CCGBank.Word_RE.sub(f'*{i}*', ccg, 1)
         for p in CCGBank.phrases(ccg):
             indices = [i.group('n') for i in ID_RE.finditer(p.phrase)]
-            yield f'{indices[0]}-{indices[-1]}'
+            yield next(phrases), '{indices[0]}-{indices[-1]}'
 
     @staticmethod
     def test(text):
@@ -113,42 +116,42 @@ class CCGBank:
 
 class Readible:
 
-    Word_RE = re.compile('{(?P<tag>[^\s{}]+) (?P<word>[^\s{}]+)( (?P<semantics>[^\s{}]+))?}')
-    Phrase_RE = re.compile('(?P<tag>[^\s{}]+)( (?P<semantics>[^\s{}]+))?\s*(?=[(])')
+    Word_RE = re.compile('{(?P<tag>[^\s{}]+) (?P<word>[^\s{}]+|"[^"]*?")( (?P<semantics>[^\s{}]+|"[^"]*?"))?}')
+    Phrase_RE = re.compile('(?P<tag>[^\s{}]+)( (?P<semantics>[^\s{}]+|"[^"]*?"))?\s*{')
 
     class Phrase:
-        Children_RE = re.compile('<1>(?P<a>.*?)</1>( <1>(?P<b>.*?)</1>)?')
+        Children_RE = re.compile('<1>(?P<a>.*?)</1>(\s*<1>(?P<b>.*?)</1>)?', re.DOTALL)
 
         def __init__(self, ccg_phrase):
             self.phrase = ccg_phrase
             self._match = Readible.Phrase_RE.match(self.phrase)
 
         def tag(self):
-            return paren_utils.unescape_parens(self._match.group('tag'))
+            return self._match.group('tag')
 
         def children(self):
-            ccg_phrase = paren_utils.mark_depth(self.phrase)
+            ccg_phrase = paren_utils.mark_depth(self.phrase, lparen='{',rparen='}')
             num_children = ccg_phrase.count('<1>')
             x = self.Children_RE.search(ccg_phrase)
             a = x.group('a')
-            a = paren_utils.unmark_depth(a)
+            a = paren_utils.unmark_depth(a, lparen='{',rparen='}')
             if num_children == 1:
-                a = Readible.Phrase(a) if Readible.Phrase_RE.match(a) else Readible.Word(a)
+                a = Readible.Phrase(a) if '{' in a else Readible.Word('{'+a+'}')
                 return [a]
             elif num_children == 2:
+                a = Readible.Phrase(a) if '{' in a else Readible.Word('{'+a+'}')
                 b = x.group('b')
                 if not b:
                     print(self.phrase, x.group())
-                b = paren_utils.unmark_depth(b)
-                a = Readible.Phrase(a) if Readible.Phrase_RE.match(a) else Readible.Word(a)
-                b = Readible.Phrase(b) if Readible.Phrase_RE.match(b) else Readible.Word(b)
+                b = paren_utils.unmark_depth(b, lparen='{',rparen='}')
+                b = Readible.Phrase(b) if '{' in b else Readible.Word('{'+b+'}')
                 return [a, b]
             else:
                 return []
 
         def semantics(self):
             s = self._match.group('semantics')
-            return s if s else ''
+            return s.replace('"','') if s else ''
 
         def combinator(self):
             children = self.children()
@@ -160,34 +163,50 @@ class Readible:
     class Word:
         def __init__(self, ccg_word):
             self.text = ccg_word
-            self._match = Readible.Phrase_RE.match(self.text)
+            self._match = Readible.Word_RE.match(self.text)
 
         def word(self):
             return self._match.group('word')
 
         def tag(self):
-            return paren_utils.unescape_parens(self._match.group('tag'))
+            return self._match.group('tag')
 
         def pos(self):
             return ''
 
         def semantics(self):
             s = self._match.group('semantics')
-            return s if s else ''
+            return s.replace('"','') if s else ''
 
     @staticmethod
     def words(ccg):
         for w in Readible.Word_RE.finditer(ccg):
-            yield Readible.Word(w.group())
+            word = w.group()
+            yield Readible.Word(word)
 
     @staticmethod
     def phrases(ccg):
-        ccg = paren_utils.escape_parens(ccg)
-        ccg = ccg.replace('{','(').replace('}',')')
-        for s in paren_utils.paren_iter(ccg, bottom_up=True):
-            p = Readible.Phrase_RE.match(s)
-            if not p: continue
-            yield Readible.Phrase(s)
+        for s in paren_utils.paren_iter(ccg, bottom_up=True, lparen='{',rparen='}'):
+            if Readible.Phrase_RE.match(s):
+                yield Readible.Phrase(s)
+
+    @staticmethod
+    def words_and_indices(ccg):
+        for i,w in enumerate(Readible.words(ccg)):
+            yield w,i
+
+    @staticmethod
+    def phrases_and_indices(ccg):
+        phrases = Readible.phrases(ccg)
+        ccg_ids = ccg
+        ID_RE = re.compile('[*](?P<n>[0-9]+)[*]')
+        for i,w in enumerate(Readible.words(ccg)):
+            word = w.text
+            ccg_ids = ccg_ids.replace(word, f'{{*{i}*}}', 1)
+        for s in paren_utils.paren_iter(ccg_ids, bottom_up=True, lparen='{',rparen='}'):
+            if Readible.Phrase_RE.match(s):
+                indices = [i.group('n') for i in ID_RE.finditer(s)]
+                yield (next(phrases), f'{indices[0]}-{indices[-1]}')
 
     @staticmethod
     def test(text):
@@ -208,14 +227,23 @@ class Readible:
 
 def main():
     ccg = r'''
-    (<T S[dcl] 1 2> (<T S/S 0 2> (<T S/S 0 2> (<L (S/S)/NP IN IN In (S/S)/NP>) (<T NP 0 2> (<L NP/N DT DT the NP/N>) (<L N NN NN story N>) ) ) (<L , , , , ,>) ) (<T S[dcl] 1 2> (<T NP 0 1> (<T N 1 2> (<L N/N NN NN evildoer N/N>) (<T N 1 2> (<L N/N NNP NNP Cruella N/N>) (<T N 1 2> (<L N/N IN IN de N/N>) (<L N NNP NNP Vil N>) ) ) ) ) (<T S[dcl]\NP 0 2> (<L (S[dcl]\NP)/NP VBZ VBZ makes (S[dcl]\NP)/NP>) (<T NP 0 2> (<L NP/N DT DT no NP/N>) (<T N 0 2> (<L N/(S[to]\NP) NN NN attempt N/(S[to]\NP)>) (<T S[to]\NP 0 2> (<T S[to]\NP 0 2> (<L (S[to]\NP)/(S[b]\NP) TO TO to (S[to]\NP)/(S[b]\NP)>) (<T S[b]\NP 0 2> (<L (S[b]\NP)/NP VB VB conceal (S[b]\NP)/NP>) (<T NP 0 2> (<L NP/(N/PP) PRP$ PRP$ her NP/(N/PP)>) (<T N/PP 0 2> (<L N/PP NN NN glee N/PP>) (<T (N/PP)\(N/PP) 1 2> (<L conj CC CC and conj>) (<T N/PP 0 2> (<L (N/PP)/PP NN NN lack (N/PP)/PP>) (<T PP 0 2> (<L PP/NP IN IN of PP/NP>) (<T NP 0 1> (<L N NN NN conscience N>) ) ) ) ) ) ) ) ) (<L . . . . .>) ) ) ) ) ) ) 
-    '''
-    for w,i in zip(CCGBank.words(ccg),CCGBank.word_indices(ccg)):
-        print(i, w.word(), w.tag(), w.pos())
+{S[dcl] "chase(DOGS,CATS)"
+	{NP "DOGS"
+		{N dogs "DOGS"} }
+	{S[dcl]\NP "\lambda y.chase(y,CATS)"
+		{S[dcl]\NP/NP chase "\lambda x\lambda y.chase(y,x)"}
+		{NP "CATS"
+			{N cats "CATS"} } } }
+'''
+    # for w in Readible.words(ccg):
+    #     print(w.word(), w.tag(), w.pos(), w.text)
 
 
-    for p,i in zip(CCGBank.phrases(ccg), CCGBank.phrase_indices(ccg)):
-        print(i, p.tag(),':', ' '.join(t.tag() for t in p.children()), p.combinator())
+    for w,i in Readible.words_and_indices(ccg):
+        print(i, w.word(), w.tag(), w.pos(), w.text)
+
+    for p,i in Readible.phrases_and_indices(ccg):
+        print(i, p.tag(), p.semantics(),':',' '.join(t.tag() for t in p.children()), p.combinator())
 
 
 if __name__ == "__main__":
