@@ -8,7 +8,15 @@ Python 3.6 or higher
 CCGBank Machine Readible
 
 Bracket
-
+```
+{S[dcl] "chase(DOGS,CATS)"
+	{NP "DOGS"
+		{N dogs "DOGS"} }
+	{S[dcl]\NP "\lambda y.chase(y,CATS)"
+		{S[dcl]\NP/NP chase "\lambda x\lambda y.chase(y,x)"}
+		{NP "CATS"
+			{N cats "CATS"} } } }
+```
 # HTML
 
 # Latex
