@@ -7,13 +7,7 @@ Python 3.6 or higher
 ### Input Formats
 CCGBank Machine Readible
 ```
-(<T S[dcl] 1 2> 
-  (<T NP 0 1> 
-    (<L N NNS NNS dogs N>) ) 
-  (<T S[dcl]\NP> 
-    (<L S[dcl]\NP/NP VBP VBP chase S[dcl]\NP/NP>) 
-    (<T NP 0 1> 
-      (<L N NNS NNS cats N>) ) ) )
+(<T S[dcl] 1 2> (<T NP 0 1> (<L N NNS _ dogs _>) ) (<T S[dcl]\NP> (<L S[dcl]\NP/NP VBP _ chase _>) (<T NP 0 1> (<L N NNS _ cats _>) ) ) )
 ```
 Bracket
 ```
